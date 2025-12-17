@@ -577,7 +577,7 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-8 w-full max-w-sm">
                <div className="text-center md:text-left space-y-3">
                  <h2 className="font-serif text-5xl italic text-booth-dark">Ready!</h2>
-                 <p className="text-gray-500 text-lg">Your digital souvenir is ready to keep.</p>
+                 <p className="text-gray-500 text-lg">Your digital photo strip is ready to keep.</p>
                </div>
 
                <div className="space-y-4">
