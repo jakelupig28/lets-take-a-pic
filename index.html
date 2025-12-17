@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Let's take a pic</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=Playfair+Display:ital@0;1&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"DM Sans"', 'sans-serif'],
+              serif: ['"Playfair Display"', 'serif'],
+            },
+            colors: {
+              'booth-cream': '#FDFBF7',
+              'booth-dark': '#1A1A1A',
+              'booth-accent': '#E5E5E5',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #FDFBF7;
+        color: #1A1A1A;
+      }
+      /* Hide scrollbar for clean UI */
+      ::-webkit-scrollbar {
+        width: 0px;
+        background: transparent;
+      }
+
+      /* Video Mirror + Hover Scale Effect */
+      .hover-scale-mirror {
+        transform: scaleX(-1);
+        transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), filter 0.3s ease;
+      }
+      .hover-scale-mirror:hover {
+        transform: scaleX(-1) scale(1.05);
+      }
+
+      /* Animated Filters */
+      @keyframes effect-breathe {
+        0% { filter: brightness(100%) saturate(100%); transform: scale(1); }
+        50% { filter: brightness(110%) saturate(110%); transform: scale(1.02); }
+        100% { filter: brightness(100%) saturate(100%); transform: scale(1); }
+      }
+      .anim-breathe {
+        animation: effect-breathe 4s ease-in-out infinite;
+      }
+
+      @keyframes effect-rainbow {
+        0% { filter: hue-rotate(0deg); }
+        100% { filter: hue-rotate(360deg); }
+      }
+      .anim-rainbow {
+        animation: effect-rainbow 5s linear infinite;
+      }
+
+      @keyframes effect-flicker {
+        0% { opacity: 1; }
+        5% { opacity: 0.8; }
+        10% { opacity: 1; }
+        15% { opacity: 1; }
+        20% { opacity: 0.9; }
+        25% { opacity: 1; }
+        100% { opacity: 1; }
+      }
+      .anim-flicker {
+        animation: effect-flicker 2s steps(10) infinite;
+      }
+
+      @keyframes effect-wobble {
+        0%, 100% { transform: rotate(-3deg); }
+        50% { transform: rotate(3deg); }
+      }
+      .anim-wobble {
+        animation: effect-wobble 2s ease-in-out infinite;
+      }
+
+      @keyframes effect-glow {
+        0%, 100% { filter: brightness(100%) blur(0px); }
+        50% { filter: brightness(130%) blur(2px); }
+      }
+      .anim-glow {
+        animation: effect-glow 3s ease-in-out infinite;
+      }
+
+      @keyframes effect-pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+      }
+      .anim-pulse {
+        animation: effect-pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.561.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

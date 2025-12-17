@@ -1,0 +1,7 @@
+{
+  "name": "Let's take a pic",
+  "description": "A minimalist, web-based digital photo booth with aesthetic filters and frame options.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
