@@ -214,11 +214,11 @@ const App: React.FC = () => {
   // 1. Landing Screen
   if (appState === AppState.IDLE) {
     return (
-      <div className="min-h-screen bg-booth-cream text-booth-dark flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Animated Background Blobs */}
-        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-yellow-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-32 left-20 w-[500px] h-[500px] bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-blue-50 text-booth-dark flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        {/* Animated Background Blobs - Enhanced */}
+        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-purple-200/50 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob"></div>
+        <div className="absolute top-[10%] right-[-10%] w-[600px] h-[600px] bg-yellow-100/60 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-32 left-[15%] w-[600px] h-[600px] bg-pink-200/50 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob animation-delay-4000"></div>
 
         <main className="z-10 text-center space-y-12 w-full max-w-4xl">
           <div className="space-y-4">
