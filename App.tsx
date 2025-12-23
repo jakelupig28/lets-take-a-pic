@@ -132,7 +132,6 @@ const App: React.FC = () => {
   const processResult = useCallback(async (finalPhotos: string[]) => {
     setAppState(AppState.PROCESSING);
     try {
-      // Use current config state here
       const result = await generateComposite(finalPhotos, config.gridType, config.frameColor);
       setCompositeUrl(result);
       setAppState(AppState.RESULT);
@@ -161,7 +160,6 @@ const App: React.FC = () => {
              }, 500);
              return newPhotos;
           } else {
-            // Store delay timeout to allow cancellation
             delayRef.current = window.setTimeout(() => {
               startCountdown();
             }, 1500);
@@ -174,7 +172,6 @@ const App: React.FC = () => {
     }
   }, [config, playShutter, startCountdown, videoRef, processResult]);
 
-  // Keep ref updated
   useEffect(() => {
     takePhotoRef.current = takePhoto;
   }, [takePhoto]);
@@ -194,7 +191,6 @@ const App: React.FC = () => {
       link.click();
       document.body.removeChild(link);
 
-      // Trigger feedback
       setShowDownloadFeedback(true);
       setTimeout(() => setShowDownloadFeedback(false), 4000);
     }
@@ -209,13 +205,10 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Render Components --- //
-
   // 1. Landing Screen
   if (appState === AppState.IDLE) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-blue-50 text-booth-dark flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Animated Background Blobs - Enhanced */}
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-purple-200/50 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob"></div>
         <div className="absolute top-[10%] right-[-10%] w-[600px] h-[600px] bg-yellow-100/60 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob animation-delay-2000"></div>
         <div className="absolute -bottom-32 left-[15%] w-[600px] h-[600px] bg-pink-200/50 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob animation-delay-4000"></div>
@@ -260,7 +253,7 @@ const App: React.FC = () => {
     );
   }
 
-  // 2. Setup Screen (Live Preview + Controls)
+  // 2. Setup Screen
   if (appState === AppState.SETUP) {
     const gridConfig = GRID_CONFIGS[config.gridType];
     const isDarkFrame = config.frameColor === FrameColor.BLACK;
@@ -269,25 +262,27 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-booth-cream flex flex-col md:flex-row">
         {/* Left: Preview */}
-        <div className="flex-1 relative flex flex-col items-center justify-center bg-gray-100 p-8 md:p-12 order-1 md:order-1">
+        <div className="flex-1 relative flex flex-col items-center justify-center bg-gray-100 p-8 md:p-12 order-1 md:order-1 min-h-[500px]">
           <div 
-            className="relative w-full max-w-xl shadow-2xl transition-all duration-300 border-[16px] flex flex-col"
+            className="relative w-full max-w-xl max-h-full shadow-2xl transition-all duration-300 border-[16px] flex flex-col overflow-hidden"
             style={{ 
               borderColor: config.frameColor,
               backgroundColor: config.frameColor,
+              aspectRatio: gridConfig.aspectRatio,
+              height: (config.gridType === GridType.STRIP_4 || config.gridType === GridType.STRIP_3) ? 'auto' : undefined,
+              maxWidth: (config.gridType === GridType.STRIP_4 || config.gridType === GridType.STRIP_3) ? '320px' : '576px'
             }}
           >
-             {/* Dynamic Grid Preview */}
              <div 
-               className="w-full relative overflow-hidden transition-colors duration-300"
+               className="w-full relative overflow-hidden transition-colors duration-300 p-4"
                style={{ 
                  aspectRatio: gridConfig.aspectRatio,
                  backgroundColor: config.frameColor 
                }}
              >
-                <div className={`grid ${getGridClasses(config.gridType)} gap-2 w-full h-full`}>
+                <div className={`grid ${getGridClasses(config.gridType)} gap-4 w-full h-full`}>
                   {Array.from({ length: gridConfig.count }).map((_, i) => (
-                    <div key={i} className="relative overflow-hidden w-full h-full bg-black/10">
+                    <div key={i} className="relative overflow-hidden w-full h-full bg-black/10 shadow-sm">
                       <VideoFeed 
                         stream={stream} 
                         filter={config.filterType}
@@ -305,10 +300,9 @@ const App: React.FC = () => {
                  </div>
              </div>
 
-             {/* Footer Branding inside the frame */}
-             <div className="pt-6 pb-2 flex justify-center items-center">
+             <div className="pt-6 pb-2 flex justify-center items-center mt-auto">
                <div className="px-8 py-3">
-                 <span className={`font-serif italic text-2xl ${textColor}`}>
+                 <span className={`font-serif italic ${config.gridType === GridType.STRIP_4 ? 'text-xl' : 'text-2xl'} ${textColor}`}>
                    let's take a pic
                  </span>
                </div>
@@ -393,7 +387,7 @@ const App: React.FC = () => {
 
            <div className="space-y-3">
             <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
-              <Icons.Image className="w-4 h-4 mr-2"/> Frame
+              <Icons.Palette className="w-4 h-4 mr-2"/> Frame
             </label>
             <div className="flex gap-4">
               {FRAMES.map((frame) => (
@@ -445,7 +439,7 @@ const App: React.FC = () => {
     );
   }
 
-  // 3. Capture Mode (Countdown + Flash + Side Gallery)
+  // 3. Capture Mode
   if (appState === AppState.COUNTDOWN || appState === AppState.CAPTURE) {
     const totalPhotos = GRID_CONFIGS[config.gridType].count;
     const animClass = config.animationType !== AnimationType.NONE ? `anim-${config.animationType}` : '';
@@ -454,12 +448,11 @@ const App: React.FC = () => {
       <div className="h-screen w-screen bg-white relative flex overflow-hidden">
         {flash && <div className="absolute inset-0 bg-white z-50 animate-fadeOut pointer-events-none" />}
         
-        {/* Main Camera Area */}
         <div className="flex-1 relative flex items-center justify-center p-8 md:p-12">
             <div 
               className={`relative w-full max-w-4xl max-h-[80vh] shadow-2xl rounded-lg overflow-hidden border border-gray-200 bg-gray-100 transition-all duration-300 ${animClass}`}
               style={{ 
-                 aspectRatio: GRID_CONFIGS[config.gridType].aspectRatio,
+                 aspectRatio: 4/3, // Force 4:3 for capture frame
               }}
             >
               <video 
@@ -471,7 +464,6 @@ const App: React.FC = () => {
                   style={{ filter: config.filterType, WebkitFilter: config.filterType }}
                 />
                 
-                {/* Countdown Overlay */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
                   <div className="text-[10rem] md:text-[14rem] font-bold text-white drop-shadow-2xl animate-pulse font-serif italic leading-none">
                     {countdown > 0 ? countdown : ''}
@@ -480,7 +472,6 @@ const App: React.FC = () => {
             </div>
         </div>
 
-        {/* Right Sidebar: Live Gallery */}
         <div className="hidden md:flex flex-col w-32 lg:w-48 bg-white border-l border-gray-200 p-4 gap-4 z-20 h-full overflow-y-auto">
              <h3 className="text-gray-500 text-xs font-bold uppercase tracking-widest text-center py-2 border-b border-gray-200">
                 Photos
@@ -516,7 +507,6 @@ const App: React.FC = () => {
                  );
                })}
              </div>
-             {/* Progress Bar */}
              <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden mt-2">
                 <div 
                   className="h-full bg-booth-dark transition-all duration-500 ease-out" 
@@ -536,7 +526,6 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-booth-cream flex flex-col items-center justify-center p-6 relative">
          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
 
-         {/* Download Feedback Toast */}
          {showDownloadFeedback && (
             <div className="fixed top-8 left-0 right-0 flex justify-center z-50 pointer-events-none">
               <div className="bg-white text-booth-dark px-6 py-4 rounded-full shadow-2xl flex items-center gap-3 border border-gray-200 animate-bounce pointer-events-auto">
@@ -550,7 +539,6 @@ const App: React.FC = () => {
 
          <div className="z-10 w-full max-w-6xl flex flex-col md:flex-row gap-16 items-center justify-center">
             
-            {/* The Final Image */}
             <div className="relative group shadow-2xl">
                {compositeUrl ? (
                  <div 
@@ -573,7 +561,6 @@ const App: React.FC = () => {
                )}
             </div>
 
-            {/* Actions */}
             <div className="flex flex-col gap-8 w-full max-w-sm">
                <div className="text-center md:text-left space-y-3">
                  <h2 className="font-serif text-5xl italic text-booth-dark">Ready!</h2>

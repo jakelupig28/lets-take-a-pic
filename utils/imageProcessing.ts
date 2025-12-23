@@ -3,18 +3,45 @@ import { GRID_CONFIGS } from "../constants";
 
 /**
  * Captures the current frame from the video element applying the selected filter.
+ * Clips the image to a 4:3 aspect ratio.
  */
 export const captureFrame = (
   video: HTMLVideoElement,
   filter: FilterType
 ): string => {
   const canvas = document.createElement("canvas");
-  // Use the video's intrinsic dimensions
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
+
+  // Desired Aspect Ratio 4:3
+  const targetRatio = 4/3;
+  const videoRatio = video.videoWidth / video.videoHeight;
+  
+  let sW, sH, sX, sY;
+
+  // Calculate cropping to center the image within the 4:3 container
+  if (videoRatio > targetRatio) {
+    // Video is wider (e.g. 16:9). Crop width.
+    sH = video.videoHeight;
+    sW = sH * targetRatio;
+    sX = (video.videoWidth - sW) / 2;
+    sY = 0;
+  } else {
+    // Video is taller or equal. Crop height.
+    sW = video.videoWidth;
+    sH = sW / targetRatio;
+    sX = 0;
+    sY = (video.videoHeight - sH) / 2;
+  }
+
+  // Ensure integer dimensions
+  sW = Math.floor(sW);
+  sH = Math.floor(sH);
+  sX = Math.floor(sX);
+  sY = Math.floor(sY);
+
+  canvas.width = sW;
+  canvas.height = sH;
 
   // Apply filter contextually if supported, otherwise we might need specific logic
   // Note: ctx.filter is supported in most modern browsers.
@@ -26,7 +53,8 @@ export const captureFrame = (
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
 
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // Draw clipped version
+  ctx.drawImage(video, sX, sY, sW, sH, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/png");
 };
 
@@ -44,9 +72,11 @@ export const generateComposite = async (
   if (!ctx) return "";
 
   // Base configuration
-  const padding = 40;
-  const gap = 20;
-  const bottomLabelHeight = 160; // Increased footer for better portrait balance
+  // We use equal padding and gap to ensure symmetric "borders" around all sides of the photos
+  // Increased to 70px (from 60px) to add more space as requested
+  const padding = 70; 
+  const gap = 70; 
+  const bottomLabelHeight = 160; 
   
   // Assuming all captured images are same size. Load first to get dimensions.
   const loadedImages = await Promise.all(
@@ -72,23 +102,29 @@ export const generateComposite = async (
   let sW = sourceW;
   let sH = sourceH;
 
-  // For Grid 2x2, we use slight landscape (4:3 ratio)
+  // For Grid 2x2, we use slight landscape (4:3 ratio) - though images are already 4:3 from capture
   if (gridType === GridType.GRID_2X2) {
+      // If source matches 4:3 (which it should), these are pass-through
       const targetRatio = 4/3;
       
       if (sourceW / sourceH > targetRatio) {
-          // Source is wider than target. Fit height, crop width.
           sH = sourceH;
           sW = sourceH * targetRatio;
           sX = (sourceW - sW) / 2;
           sY = 0;
       } else {
-          // Source is taller. Fit width, crop height.
           sW = sourceW;
           sH = sourceW / targetRatio;
           sX = 0;
           sY = (sourceH - sH) / 2;
       }
+      
+      // Floor values to avoid sub-pixel rendering gaps
+      sW = Math.floor(sW);
+      sH = Math.floor(sH);
+      sX = Math.floor(sX);
+      sY = Math.floor(sY);
+      
       cellW = sW;
       cellH = sH;
   }
@@ -113,13 +149,13 @@ export const generateComposite = async (
       break;
   }
 
-  // Setup Canvas
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
+  // Setup Canvas with integer dimensions
+  canvas.width = Math.ceil(canvasWidth);
+  canvas.height = Math.ceil(canvasHeight);
 
   // Draw Background
   ctx.fillStyle = frameColor;
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Draw Images
   let currentX = padding;
@@ -136,7 +172,7 @@ export const generateComposite = async (
       ctx.drawImage(img, sX, sY, sW, sH, currentX, currentY, cellW, cellH);
 
     } else {
-       // Strips or Single - assume full image for now (or could add logic if strips need cropping)
+       // Strips or Single
        currentX = padding;
        currentY = padding + (index * (sourceH + gap));
        ctx.drawImage(img, currentX, currentY, sourceW, sourceH);
@@ -145,18 +181,30 @@ export const generateComposite = async (
 
   // Draw Footer Text
   ctx.fillStyle = (frameColor === FrameColor.BLACK) ? '#FFFFFF' : '#1A1A1A';
-  ctx.font = 'bold 40px "DM Sans", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
-  const textY = canvasHeight - (bottomLabelHeight / 2) - 10;
-  ctx.fillText(title, canvasWidth / 2, textY);
+  // Calculate center of the footer text
+  // The total empty space at the bottom is padding (now 70px) + bottomLabelHeight (160px) = 230px.
+  // We keep the fixed offset logic to ensure it stays visually where expected (lowered).
+  // 90px from bottom ensures good separation from the last photo given the increased padding.
+  const footerCenterY = canvas.height - 90;
 
+  // Title
+  ctx.font = 'italic 700 48px "Playfair Display", serif';
   // Date
-  ctx.font = '24px "DM Sans", sans-serif';
+  const dateFont = '500 24px "DM Sans", sans-serif';
+
+  // Position title and date relative to the visual center
+  const titleY = footerCenterY - 24;
+  const dateY = footerCenterY + 28;
+
+  ctx.fillText(title, canvas.width / 2, titleY);
+
+  ctx.font = dateFont;
   ctx.globalAlpha = 0.7;
   const dateStr = new Date().toLocaleDateString();
-  ctx.fillText(dateStr, canvasWidth / 2, textY + 40);
+  ctx.fillText(dateStr, canvas.width / 2, dateY);
 
   return canvas.toDataURL("image/png");
 };
