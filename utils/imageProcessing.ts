@@ -1,5 +1,108 @@
-import { GridType, FrameColor, FilterType } from "../types";
+import { GridType, FrameColor, FilterType, MaskType, FaceData } from "../types";
 import { GRID_CONFIGS } from "../constants";
+
+// Helper to draw a single heart on the canvas
+const drawHeart = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, rotation: number, opacity: number = 0.9) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation * Math.PI / 180);
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = color;
+  // Reduce shadow for cleaner look or match the aesthetic
+  ctx.shadowColor = 'rgba(255, 105, 180, 0.5)';
+  ctx.shadowBlur = 10;
+  
+  // Draw Heart Path
+  ctx.beginPath();
+  const topCurveHeight = size * 0.3;
+  ctx.moveTo(0, topCurveHeight);
+  // Top left curve
+  ctx.bezierCurveTo(
+    0, 0, 
+    -size / 2, 0, 
+    -size / 2, topCurveHeight
+  );
+  // Bottom left curve
+  ctx.bezierCurveTo(
+    -size / 2, (size + topCurveHeight) / 2, 
+    0, (size + topCurveHeight) / 2, 
+    0, size
+  );
+  // Bottom right curve
+  ctx.bezierCurveTo(
+    0, (size + topCurveHeight) / 2, 
+    size / 2, (size + topCurveHeight) / 2, 
+    size / 2, topCurveHeight
+  );
+  // Top right curve
+  ctx.bezierCurveTo(
+    size / 2, 0, 
+    0, 0, 
+    0, topCurveHeight
+  );
+  ctx.fill();
+  ctx.restore();
+};
+
+const drawHeartsMask = (ctx: CanvasRenderingContext2D, width: number, height: number, faceData?: FaceData) => {
+  // If face detected, use it. Otherwise default to center (approximate position)
+  
+  let centerX = width / 2;
+  let centerY = height * 0.3; // Default forehead
+  let baseScale = 1.0;
+
+  if (faceData) {
+    // FaceData is normalized 0-1.
+    // video frame is flipped in context (mirror effect), but the source faceData is from raw video.
+    // Raw Video: X=0 is Left.
+    // Canvas Context: Flipped horizontally by `scale(-1, 1)`. 
+    // This means coordinate 0 is visually on the Right, and width is on the Left.
+    // However, we translate(width, 0) before scaling.
+    // So logic:
+    // Canvas X=0 corresponds to Source X=0 (Visually Right side of screen)
+    // Canvas X=Width corresponds to Source X=Width (Visually Left side of screen)
+    // Actually, captureFrame does: translate(width, 0); scale(-1, 1);
+    // This effectively maps Source Pixels directly to Canvas Pixels, just mirrored rendering.
+    // So if face is at x=100 in source, we draw at x=100 in canvas.
+    // The scale(-1, 1) flips the drawing at that position.
+    
+    centerX = faceData.x * width;
+    
+    // Y is normal
+    centerY = (faceData.y * height) - (faceData.height * height * 0.55); // Slightly higher than center
+    
+    // Scale hearts based on face width relative to frame width
+    // Reference face width might be ~0.3 of screen.
+    baseScale = (faceData.width / 0.35); 
+  }
+
+  // Radius of the crown arc - Smaller now
+  const radiusX = (width * 0.20) * baseScale; 
+  const radiusY = (height * 0.10) * baseScale;
+  
+  // Mixed colors: Light Pink (#F9A8D4) and Dark Pink (#DB2777)
+  const colors = ['#F9A8D4', '#DB2777', '#F472B6', '#BE185D', '#FBCFE8'];
+
+  const hearts = [
+    { angle: -40, size: 30, rotate: -30, color: colors[0] },
+    { angle: -20, size: 38, rotate: -15, color: colors[1] },
+    { angle: 0, size: 45, rotate: 0, color: colors[2] },
+    { angle: 20, size: 38, rotate: 15, color: colors[3] },
+    { angle: 40, size: 30, rotate: 30, color: colors[4] },
+  ];
+
+  hearts.forEach(heart => {
+     const rad = heart.angle * Math.PI / 180;
+     const x = centerX + (radiusX * Math.sin(rad));
+     const y = centerY - (radiusY * Math.cos(rad));
+     
+     // Scale size relative to canvas width (standard reference 640px)
+     const scaleFactor = (width / 640) * baseScale;
+     
+     // Draw with full opacity for the photo
+     drawHeart(ctx, x, y, heart.size * scaleFactor, heart.color, heart.rotate, 0.95);
+  });
+};
 
 /**
  * Captures the current frame from the video element applying the selected filter.
@@ -7,7 +110,9 @@ import { GRID_CONFIGS } from "../constants";
  */
 export const captureFrame = (
   video: HTMLVideoElement,
-  filter: FilterType
+  filter: FilterType,
+  mask: MaskType = MaskType.NONE,
+  faceData?: FaceData | null
 ): string => {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -43,18 +148,51 @@ export const captureFrame = (
   canvas.width = sW;
   canvas.height = sH;
 
-  // Apply filter contextually if supported, otherwise we might need specific logic
-  // Note: ctx.filter is supported in most modern browsers.
+  // Apply filter contextually if supported
   if (filter !== FilterType.NORMAL) {
     ctx.filter = filter;
   }
 
-  // Flip horizontally to match mirror view usually expected in photobooths
+  // Flip horizontally to match mirror view
   ctx.translate(canvas.width, 0);
   ctx.scale(-1, 1);
 
   // Draw clipped version
   ctx.drawImage(video, sX, sY, sW, sH, 0, 0, canvas.width, canvas.height);
+  
+  // Draw Mask if enabled
+  if (mask === MaskType.HEARTS) {
+    // We need to adjust faceData for the crop if it exists
+    
+    let adjustedFaceData = undefined;
+    if (faceData) {
+        // Convert normalized face coords to source pixels
+        const fx_px = faceData.x * video.videoWidth;
+        const fy_px = faceData.y * video.videoHeight;
+        const fw_px = faceData.width * video.videoWidth;
+        const fh_px = faceData.height * video.videoHeight;
+
+        // Check if face is inside the crop
+        // The crop rect is (sX, sY, sW, sH)
+        
+        // Relative to Crop
+        const fx_crop = fx_px - sX;
+        const fy_crop = fy_px - sY;
+        
+        // Normalize back to Canvas size
+        adjustedFaceData = {
+            x: fx_crop / sW,
+            y: fy_crop / sH,
+            width: fw_px / sW,
+            height: fh_px / sH,
+            videoWidth: sW, // adjusted video width for the context of mask drawing
+            videoHeight: sH
+        };
+    }
+
+    drawHeartsMask(ctx, canvas.width, canvas.height, adjustedFaceData);
+  }
+
   return canvas.toDataURL("image/png");
 };
 
@@ -72,7 +210,6 @@ export const generateComposite = async (
   if (!ctx) return "";
 
   // Base configuration
-  // We use equal padding and gap to ensure symmetric "borders" around all sides of the photos
   // Increased to 70px (from 60px) to add more space as requested
   const padding = 70; 
   const gap = 70; 
@@ -185,9 +322,6 @@ export const generateComposite = async (
   ctx.textBaseline = 'middle';
   
   // Calculate center of the footer text
-  // The total empty space at the bottom is padding (now 70px) + bottomLabelHeight (160px) = 230px.
-  // We keep the fixed offset logic to ensure it stays visually where expected (lowered).
-  // 90px from bottom ensures good separation from the last photo given the increased padding.
   const footerCenterY = canvas.height - 90;
 
   // Title

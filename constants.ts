@@ -1,4 +1,4 @@
-import { AnimationType, FilterType, FrameColor, GridType } from "./types";
+import { AnimationType, FilterType, FrameColor, GridType, MaskType } from "./types";
 
 export const DEFAULT_CONFIG = {
   timerDuration: 3,
@@ -6,6 +6,7 @@ export const DEFAULT_CONFIG = {
   filterType: FilterType.NORMAL,
   frameColor: FrameColor.WHITE,
   animationType: AnimationType.NONE,
+  maskType: MaskType.NONE,
 };
 
 export const GRID_CONFIGS: Record<GridType, { count: number; label: string; aspectRatio: number }> = {
@@ -34,6 +35,11 @@ export const ANIMATIONS = [
   { label: 'Wobble', value: AnimationType.WOBBLE },
   { label: 'Glow', value: AnimationType.GLOW },
   { label: 'Pulse', value: AnimationType.PULSE },
+];
+
+export const MASKS = [
+  { label: 'None', value: MaskType.NONE },
+  { label: 'Hearts', value: MaskType.HEARTS },
 ];
 
 export const FRAMES = [

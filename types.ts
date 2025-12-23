@@ -28,6 +28,11 @@ export enum AnimationType {
   PULSE = 'pulse',
 }
 
+export enum MaskType {
+  NONE = 'none',
+  HEARTS = 'hearts',
+}
+
 export enum GridType {
   SINGLE = '1x1',
   STRIP_3 = '1x3',
@@ -52,9 +57,19 @@ export interface PhotoConfig {
   filterType: FilterType;
   frameColor: FrameColor;
   animationType: AnimationType;
+  maskType: MaskType;
 }
 
 export interface CapturedImage {
   id: string;
   dataUrl: string; // Base64
+}
+
+export interface FaceData {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  videoWidth: number;
+  videoHeight: number;
 }

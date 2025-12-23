@@ -1,10 +1,130 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebcam } from './hooks/useWebcam';
 import { useSound } from './hooks/useSound';
-import { AppState, FilterType, FrameColor, GridType, PhotoConfig, AnimationType } from './types';
-import { DEFAULT_CONFIG, GRID_CONFIGS, FILTERS, FRAMES, TIMERS, ANIMATIONS } from './constants';
+import { useFaceDetection } from './hooks/useFaceDetection';
+import { AppState, FilterType, FrameColor, GridType, PhotoConfig, AnimationType, MaskType, FaceData } from './types';
+import { DEFAULT_CONFIG, GRID_CONFIGS, FILTERS, FRAMES, TIMERS, ANIMATIONS, MASKS } from './constants';
 import { captureFrame, generateComposite } from './utils/imageProcessing';
 import { Icons } from './components/Icon';
+
+// --- Hearts Overlay Component ---
+const HeartsOverlay: React.FC<{ faceData?: FaceData | null, containerRatio: number }> = ({ faceData, containerRatio }) => {
+  // SVG of a heart
+  const HeartSVG = ({ size, rotate, delay, color }: { size: number, rotate: number, delay: string, color: string }) => (
+    <svg 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="currentColor"
+      className="drop-shadow-[0_0_4px_rgba(255,105,180,0.5)] animate-float-heart"
+      style={{ 
+        transform: `rotate(${rotate}deg)`,
+        animationDelay: delay,
+        color: color
+      }}
+    >
+      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+    </svg>
+  );
+
+  // Default center position if no face found (Fallback Mode)
+  let style: React.CSSProperties = {
+     left: '50%',
+     top: '30%',
+     transform: 'translate(-50%, -50%)',
+     opacity: 0.8, // Visible by default
+     transition: 'left 0.3s ease-out, top 0.3s ease-out, transform 0.3s ease-out'
+  };
+
+  if (faceData && faceData.videoWidth && faceData.videoHeight) {
+    const videoRatio = faceData.videoWidth / faceData.videoHeight;
+    
+    let normalizedX = faceData.x;
+    let normalizedY = faceData.y;
+    // Scale hearts based on face width (0.35 is a reference average face width)
+    let scale = faceData.width / 0.35; 
+
+    // Calculate Crop Logic (object-fit: cover)
+    // If Video is Wider than Container: Crop Left/Right
+    if (videoRatio > containerRatio) {
+       // The container displays the full height of the video, but only a fraction of width
+       const visibleFraction = (faceData.videoHeight * containerRatio) / faceData.videoWidth;
+       const offset = (1 - visibleFraction) / 2;
+       
+       // Remap source X to crop X
+       normalizedX = (faceData.x - offset) / visibleFraction;
+    } 
+    // If Video is Taller than Container: Crop Top/Bottom
+    else if (videoRatio < containerRatio) {
+       const visibleFraction = (faceData.videoWidth / containerRatio) / faceData.videoHeight;
+       const offset = (1 - visibleFraction) / 2;
+       normalizedY = (faceData.y - offset) / visibleFraction;
+    }
+
+    // Mirroring Correction:
+    // User moves Physical Left -> Camera Source Right (High X)
+    // We mirror the video visually.
+    // We want the Overlay to appear on the Left (Low X).
+    // So we flip the coordinate: (1 - normalizedX)
+    const finalLeft = (1 - normalizedX) * 100;
+    
+    // Y Correction:
+    // Move slightly up from the center of the face for the "Halo" effect
+    const finalTop = (normalizedY * 100) - 20;
+
+    style = {
+        left: `${finalLeft}%`,
+        top: `${finalTop}%`,
+        transform: `translate(-50%, -50%) scale(${scale})`,
+        opacity: 1,
+        transition: 'left 0.1s ease-out, top 0.1s ease-out, transform 0.1s ease-out'
+    };
+  }
+
+  // Requested Colors: Dark Pink and Light Pink Mix
+  const darkPink = '#DB2777'; // Pink 600
+  const lightPink = '#FBCFE8'; // Pink 200
+  const midPink = '#F472B6'; // Pink 400
+
+  return (
+    <div 
+      className="absolute pointer-events-none flex justify-center overflow-visible"
+      style={{
+        width: '240px', // Base container size
+        height: '240px',
+        ...style
+      }}
+    >
+      {/* Container for the arc of hearts */}
+      <div className="relative w-full h-full">
+         {/* Heart 1 (Far Left) - Dark */}
+         <div className="absolute" style={{ left: '20%', top: '60%', transform: 'translate(-50%, -50%)' }}>
+            <HeartSVG size={20} rotate={-35} delay="0s" color={darkPink} />
+         </div>
+
+         {/* Heart 2 (Mid Left) - Light */}
+         <div className="absolute" style={{ left: '35%', top: '45%', transform: 'translate(-50%, -50%)' }}>
+            <HeartSVG size={28} rotate={-15} delay="0.4s" color={lightPink} />
+         </div>
+
+         {/* Center Heart - Mid Pink */}
+         <div className="absolute" style={{ left: '50%', top: '35%', transform: 'translate(-50%, -50%)' }}>
+            <HeartSVG size={36} rotate={0} delay="0.8s" color={midPink} />
+         </div>
+
+         {/* Heart 4 (Mid Right) - Dark */}
+         <div className="absolute" style={{ left: '65%', top: '45%', transform: 'translate(-50%, -50%)' }}>
+            <HeartSVG size={28} rotate={15} delay="0.2s" color={darkPink} />
+         </div>
+
+         {/* Heart 5 (Far Right) - Light */}
+         <div className="absolute" style={{ left: '80%', top: '60%', transform: 'translate(-50%, -50%)' }}>
+            <HeartSVG size={20} rotate={35} delay="0.6s" color={lightPink} />
+         </div>
+      </div>
+    </div>
+  );
+};
 
 // Helper component for individual video feeds
 const VideoFeed: React.FC<{
@@ -13,9 +133,13 @@ const VideoFeed: React.FC<{
   className?: string;
   videoRef?: React.RefObject<HTMLVideoElement>;
   animation?: AnimationType;
-}> = ({ stream, filter, className, videoRef, animation }) => {
+  mask?: MaskType;
+  faceData?: FaceData | null;
+}> = ({ stream, filter, className, videoRef, animation, mask, faceData }) => {
   const internalRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const ref = videoRef || internalRef;
+  const [containerRatio, setContainerRatio] = useState(4/3);
 
   useEffect(() => {
     const el = ref.current;
@@ -27,11 +151,30 @@ const VideoFeed: React.FC<{
     }
   }, [stream, ref]);
 
+  // Update container aspect ratio on resize for accurate tracking
+  useEffect(() => {
+    const updateRatio = () => {
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect();
+        if (width && height) {
+          setContainerRatio(width / height);
+        }
+      }
+    };
+    
+    updateRatio();
+    window.addEventListener('resize', updateRatio);
+    return () => window.removeEventListener('resize', updateRatio);
+  }, []);
+
   // Determine animation class
   const animClass = animation && animation !== AnimationType.NONE ? `anim-${animation}` : '';
 
   return (
-    <div className={`w-full h-full overflow-hidden ${animClass} ${className || ''}`}>
+    <div 
+      ref={containerRef}
+      className={`w-full h-full overflow-hidden relative ${animClass} ${className || ''}`}
+    >
       <video
         ref={ref}
         autoPlay
@@ -40,6 +183,13 @@ const VideoFeed: React.FC<{
         className="w-full h-full object-cover hover-scale-mirror"
         style={{ filter, WebkitFilter: filter }}
       />
+      
+      {/* Overlay Masks */}
+      {mask === MaskType.HEARTS && (
+        <div className="absolute inset-0 z-10 pointer-events-none">
+          <HeartsOverlay faceData={faceData} containerRatio={containerRatio} />
+        </div>
+      )}
     </div>
   );
 };
@@ -57,6 +207,10 @@ const App: React.FC = () => {
   const [flash, setFlash] = useState(false);
   const { videoRef, startCamera, permissionGranted, error, stream } = useWebcam();
   
+  // Face Detection - Only active if mask is enabled and we are in active modes
+  const isDetectionActive = config.maskType === MaskType.HEARTS && (appState === AppState.SETUP || appState === AppState.CAPTURE || appState === AppState.COUNTDOWN);
+  const faceData = useFaceDetection(videoRef, isDetectionActive);
+
   // References for timers to allow cancellation
   const timerRef = useRef<number | null>(null);
   const delayRef = useRef<number | null>(null);
@@ -104,6 +258,12 @@ const App: React.FC = () => {
 
   // We need a ref for takePhoto to avoid stale closures in the interval
   const takePhotoRef = useRef<() => void>(() => {});
+  
+  // Keep faceData ref for capture
+  const faceDataRef = useRef<FaceData | null>(null);
+  useEffect(() => {
+    faceDataRef.current = faceData;
+  }, [faceData]);
 
   const startCountdown = useCallback(() => {
     setCountdown(config.timerDuration);
@@ -148,7 +308,8 @@ const App: React.FC = () => {
       setTimeout(() => setFlash(false), 200);
 
       try {
-        const photoData = captureFrame(videoRef.current, config.filterType);
+        // Pass the mask type AND detected face data to the capture function
+        const photoData = captureFrame(videoRef.current, config.filterType, config.maskType, faceDataRef.current);
         
         setPhotos(prev => {
           const newPhotos = [...prev, photoData];
@@ -287,6 +448,8 @@ const App: React.FC = () => {
                         stream={stream} 
                         filter={config.filterType}
                         animation={config.animationType}
+                        mask={config.maskType}
+                        faceData={faceData} // Pass tracked face data
                         videoRef={i === 0 ? videoRef : undefined}
                       />
                     </div>
@@ -338,6 +501,30 @@ const App: React.FC = () => {
                  </button>
                ))}
              </div>
+          </div>
+
+          <div className="space-y-3">
+            <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
+              <Icons.Sparkles className="w-4 h-4 mr-2"/> Mask
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {MASKS.map((m) => (
+                <button
+                  key={m.value}
+                  onClick={() => {
+                    setConfig(c => ({...c, maskType: m.value}));
+                    playClick();
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-sm transition-all border ${
+                    config.maskType === m.value
+                      ? 'bg-booth-dark text-white border-booth-dark'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -455,14 +642,14 @@ const App: React.FC = () => {
                  aspectRatio: 4/3, // Force 4:3 for capture frame
               }}
             >
-              <video 
-                  ref={videoRef}
-                  autoPlay 
-                  playsInline 
-                  muted 
-                  className="w-full h-full object-cover transform -scale-x-100 transition-[filter] duration-300"
-                  style={{ filter: config.filterType, WebkitFilter: config.filterType }}
-                />
+              <VideoFeed 
+                  stream={stream}
+                  filter={config.filterType}
+                  mask={config.maskType}
+                  faceData={faceData}
+                  videoRef={videoRef}
+                  className="w-full h-full"
+              />
                 
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
                   <div className="text-[10rem] md:text-[14rem] font-bold text-white drop-shadow-2xl animate-pulse font-serif italic leading-none">

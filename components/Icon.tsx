@@ -1,5 +1,5 @@
 import React from "react";
-import { Camera, Settings, Download, RotateCcw, X, Clock, Grid, Palette, Image as ImageIcon, Check } from "lucide-react";
+import { Camera, Settings, Download, RotateCcw, X, Clock, Grid, Palette, Image as ImageIcon, Check, Sparkles } from "lucide-react";
 
 export const Icons = {
   Camera,
@@ -11,5 +11,6 @@ export const Icons = {
   Grid,
   Palette,
   Image: ImageIcon,
-  Check
+  Check,
+  Sparkles
 };

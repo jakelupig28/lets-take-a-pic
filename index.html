@@ -8,6 +8,9 @@
     <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="10" y="30" width="80" height="60" rx="10" fill="%23bfdbfe" stroke="%231e293b" stroke-width="4"/><path d="M30 30 L40 15 L60 15 L70 30" fill="%23fef3c7" stroke="%231e293b" stroke-width="4"/><circle cx="50" cy="60" r="18" fill="%233b82f6" stroke="%23ffffff" stroke-width="4"/><circle cx="80" cy="40" r="4" fill="%23f472b6"/></svg>' type="image/svg+xml" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=Playfair+Display:ital@0;1&display=swap" rel="stylesheet">
+    <!-- TensorFlow.js and BlazeFace -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.1.0/dist/blazeface.min.js"></script>
     <script>
       tailwind.config = {
         theme: {
@@ -20,6 +23,25 @@
               'booth-cream': '#FDFBF7',
               'booth-dark': '#1A1A1A',
               'booth-accent': '#E5E5E5',
+            },
+            animation: {
+              'float-heart': 'floatHeart 2s ease-in-out infinite',
+              'blob': "blob 7s infinite",
+            },
+            keyframes: {
+              floatHeart: {
+                '0%': { transform: 'translateY(0) scale(0.8)', opacity: '0' },
+                '20%': { opacity: '0.8' },
+                '50%': { transform: 'translateY(-15px) scale(1)', opacity: '1' },
+                '80%': { opacity: '0.8' },
+                '100%': { transform: 'translateY(-30px) scale(0.9)', opacity: '0' },
+              },
+              blob: {
+                "0%": { transform: "translate(0px, 0px) scale(1)" },
+                "33%": { transform: "translate(30px, -50px) scale(1.1)" },
+                "66%": { transform: "translate(-20px, 20px) scale(0.9)" },
+                "100%": { transform: "translate(0px, 0px) scale(1)" }
+              }
             }
           }
         }
