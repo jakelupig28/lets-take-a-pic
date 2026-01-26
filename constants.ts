@@ -40,6 +40,7 @@ export const ANIMATIONS = [
 export const MASKS = [
   { label: 'None', value: MaskType.NONE },
   { label: 'Hearts', value: MaskType.HEARTS },
+  { label: 'Stars', value: MaskType.STARS },
 ];
 
 export const FRAMES = [

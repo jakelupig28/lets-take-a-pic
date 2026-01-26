@@ -7,9 +7,71 @@ import { DEFAULT_CONFIG, GRID_CONFIGS, FILTERS, FRAMES, TIMERS, ANIMATIONS, MASK
 import { captureFrame, generateComposite } from './utils/imageProcessing';
 import { Icons } from './components/Icon';
 
+// --- Shared Logic for Overlays ---
+const getOverlayStyle = (faceData: FaceData | null | undefined, containerRatio: number): React.CSSProperties => {
+  // Default center position if no face found (Fallback Mode)
+  let style: React.CSSProperties = {
+     left: '50%',
+     top: '30%',
+     transform: 'translate(-50%, -50%)',
+     opacity: 0.8, // Visible by default
+     transition: 'left 0.1s linear, top 0.1s linear, transform 0.1s linear' // Faster transition
+  };
+
+  if (faceData && faceData.videoWidth && faceData.videoHeight) {
+    const videoRatio = faceData.videoWidth / faceData.videoHeight;
+    
+    let normalizedX = faceData.x;
+    let normalizedY = faceData.y;
+    // Scale hearts/stars based on face width (0.35 is a reference average face width)
+    let scale = faceData.width / 0.35; 
+
+    // We need to know the visible dimensions of the face in the container to position Y correctly
+    let visibleH = faceData.height;
+
+    // Calculate Crop Logic (object-fit: cover)
+    if (videoRatio > containerRatio) {
+       // Video is Wider: Crop Left/Right
+       const visibleFraction = (faceData.videoHeight * containerRatio) / faceData.videoWidth;
+       const offset = (1 - visibleFraction) / 2;
+       
+       normalizedX = (faceData.x - offset) / visibleFraction;
+       // normalizedY remains same (0-1 maps to 0-1)
+       // visibleH remains same (relative to height which is full)
+    } 
+    else if (videoRatio < containerRatio) {
+       // Video is Taller: Crop Top/Bottom
+       const visibleFraction = (faceData.videoWidth / containerRatio) / faceData.videoHeight;
+       const offset = (1 - visibleFraction) / 2;
+       
+       normalizedY = (faceData.y - offset) / visibleFraction;
+       // Adjust visible height relative to the cropped container height
+       visibleH = faceData.height / visibleFraction;
+    }
+
+    // NOTE: We do NOT mirror X here (e.g. 1-x). 
+    // Instead we apply scaleX(-1) to the container div in the JSX.
+    // This ensures coordinate systems align perfectly with the video element.
+    const finalLeft = normalizedX * 100;
+    
+    // Y Correction: Place halo above the head
+    // Center of Halo = Face Center Y - (Face Height * 0.6)
+    // This places the center of the hearts roughly at the top of the forehead
+    const finalTop = (normalizedY - (visibleH * 0.6)) * 100;
+
+    style = {
+        left: `${finalLeft}%`,
+        top: `${finalTop}%`,
+        transform: `translate(-50%, -50%) scale(${scale})`,
+        opacity: 1,
+        transition: 'left 0.05s linear, top 0.05s linear, transform 0.05s linear' // Snappier
+    };
+  }
+  return style;
+};
+
 // --- Hearts Overlay Component ---
 const HeartsOverlay: React.FC<{ faceData?: FaceData | null, containerRatio: number }> = ({ faceData, containerRatio }) => {
-  // SVG of a heart
   const HeartSVG = ({ size, rotate, delay, color }: { size: number, rotate: number, delay: string, color: string }) => (
     <svg 
       width={size} 
@@ -27,99 +89,83 @@ const HeartsOverlay: React.FC<{ faceData?: FaceData | null, containerRatio: numb
     </svg>
   );
 
-  // Default center position if no face found (Fallback Mode)
-  let style: React.CSSProperties = {
-     left: '50%',
-     top: '30%',
-     transform: 'translate(-50%, -50%)',
-     opacity: 0.8, // Visible by default
-     transition: 'left 0.3s ease-out, top 0.3s ease-out, transform 0.3s ease-out'
-  };
-
-  if (faceData && faceData.videoWidth && faceData.videoHeight) {
-    const videoRatio = faceData.videoWidth / faceData.videoHeight;
-    
-    let normalizedX = faceData.x;
-    let normalizedY = faceData.y;
-    // Scale hearts based on face width (0.35 is a reference average face width)
-    let scale = faceData.width / 0.35; 
-
-    // Calculate Crop Logic (object-fit: cover)
-    // If Video is Wider than Container: Crop Left/Right
-    if (videoRatio > containerRatio) {
-       // The container displays the full height of the video, but only a fraction of width
-       const visibleFraction = (faceData.videoHeight * containerRatio) / faceData.videoWidth;
-       const offset = (1 - visibleFraction) / 2;
-       
-       // Remap source X to crop X
-       normalizedX = (faceData.x - offset) / visibleFraction;
-    } 
-    // If Video is Taller than Container: Crop Top/Bottom
-    else if (videoRatio < containerRatio) {
-       const visibleFraction = (faceData.videoWidth / containerRatio) / faceData.videoHeight;
-       const offset = (1 - visibleFraction) / 2;
-       normalizedY = (faceData.y - offset) / visibleFraction;
-    }
-
-    // Mirroring Correction:
-    // User moves Physical Left -> Camera Source Right (High X)
-    // We mirror the video visually.
-    // We want the Overlay to appear on the Left (Low X).
-    // So we flip the coordinate: (1 - normalizedX)
-    const finalLeft = (1 - normalizedX) * 100;
-    
-    // Y Correction:
-    // Move slightly up from the center of the face for the "Halo" effect
-    const finalTop = (normalizedY * 100) - 20;
-
-    style = {
-        left: `${finalLeft}%`,
-        top: `${finalTop}%`,
-        transform: `translate(-50%, -50%) scale(${scale})`,
-        opacity: 1,
-        transition: 'left 0.1s ease-out, top 0.1s ease-out, transform 0.1s ease-out'
-    };
-  }
-
-  // Requested Colors: Dark Pink and Light Pink Mix
-  const darkPink = '#DB2777'; // Pink 600
-  const lightPink = '#FBCFE8'; // Pink 200
-  const midPink = '#F472B6'; // Pink 400
+  const style = getOverlayStyle(faceData, containerRatio);
+  
+  const darkPink = '#DB2777'; 
+  const lightPink = '#FBCFE8'; 
+  const midPink = '#F472B6'; 
 
   return (
     <div 
       className="absolute pointer-events-none flex justify-center overflow-visible"
-      style={{
-        width: '240px', // Base container size
-        height: '240px',
-        ...style
-      }}
+      style={{ width: '240px', height: '240px', ...style }}
     >
-      {/* Container for the arc of hearts */}
       <div className="relative w-full h-full">
-         {/* Heart 1 (Far Left) - Dark */}
          <div className="absolute" style={{ left: '20%', top: '60%', transform: 'translate(-50%, -50%)' }}>
             <HeartSVG size={20} rotate={-35} delay="0s" color={darkPink} />
          </div>
-
-         {/* Heart 2 (Mid Left) - Light */}
          <div className="absolute" style={{ left: '35%', top: '45%', transform: 'translate(-50%, -50%)' }}>
             <HeartSVG size={28} rotate={-15} delay="0.4s" color={lightPink} />
          </div>
-
-         {/* Center Heart - Mid Pink */}
          <div className="absolute" style={{ left: '50%', top: '35%', transform: 'translate(-50%, -50%)' }}>
             <HeartSVG size={36} rotate={0} delay="0.8s" color={midPink} />
          </div>
-
-         {/* Heart 4 (Mid Right) - Dark */}
          <div className="absolute" style={{ left: '65%', top: '45%', transform: 'translate(-50%, -50%)' }}>
             <HeartSVG size={28} rotate={15} delay="0.2s" color={darkPink} />
          </div>
-
-         {/* Heart 5 (Far Right) - Light */}
          <div className="absolute" style={{ left: '80%', top: '60%', transform: 'translate(-50%, -50%)' }}>
             <HeartSVG size={20} rotate={35} delay="0.6s" color={lightPink} />
+         </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Stars Overlay Component ---
+const StarsOverlay: React.FC<{ faceData?: FaceData | null, containerRatio: number }> = ({ faceData, containerRatio }) => {
+  const StarSVG = ({ size, rotate, delay, color }: { size: number, rotate: number, delay: string, color: string }) => (
+    <svg 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="currentColor"
+      className="drop-shadow-[0_0_4px_rgba(250,204,21,0.6)] animate-float-heart" // Reuse float animation
+      style={{ 
+        transform: `rotate(${rotate}deg)`,
+        animationDelay: delay,
+        color: color
+      }}
+    >
+       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+    </svg>
+  );
+
+  const style = getOverlayStyle(faceData, containerRatio);
+  
+  const c1 = '#FDE047'; // Yellow 300
+  const c2 = '#FEF08A'; // Yellow 200
+  const c3 = '#FCD34D'; // Amber 300
+
+  return (
+    <div 
+      className="absolute pointer-events-none flex justify-center overflow-visible"
+      style={{ width: '240px', height: '240px', ...style }}
+    >
+      <div className="relative w-full h-full">
+         <div className="absolute" style={{ left: '15%', top: '65%', transform: 'translate(-50%, -50%)' }}>
+            <StarSVG size={24} rotate={-45} delay="0.1s" color={c1} />
+         </div>
+         <div className="absolute" style={{ left: '30%', top: '48%', transform: 'translate(-50%, -50%)' }}>
+            <StarSVG size={32} rotate={-20} delay="0.5s" color={c2} />
+         </div>
+         <div className="absolute" style={{ left: '50%', top: '35%', transform: 'translate(-50%, -50%)' }}>
+            <StarSVG size={44} rotate={0} delay="0.9s" color={c3} />
+         </div>
+         <div className="absolute" style={{ left: '70%', top: '48%', transform: 'translate(-50%, -50%)' }}>
+            <StarSVG size={32} rotate={20} delay="0.3s" color={c2} />
+         </div>
+         <div className="absolute" style={{ left: '85%', top: '65%', transform: 'translate(-50%, -50%)' }}>
+            <StarSVG size={24} rotate={45} delay="0.7s" color={c1} />
          </div>
       </div>
     </div>
@@ -185,9 +231,15 @@ const VideoFeed: React.FC<{
       />
       
       {/* Overlay Masks */}
+      {/* We apply scale-x-[-1] to matches the video mirror effect */}
       {mask === MaskType.HEARTS && (
-        <div className="absolute inset-0 z-10 pointer-events-none">
+        <div className="absolute inset-0 z-10 pointer-events-none" style={{ transform: 'scaleX(-1)' }}>
           <HeartsOverlay faceData={faceData} containerRatio={containerRatio} />
+        </div>
+      )}
+      {mask === MaskType.STARS && (
+        <div className="absolute inset-0 z-10 pointer-events-none" style={{ transform: 'scaleX(-1)' }}>
+          <StarsOverlay faceData={faceData} containerRatio={containerRatio} />
         </div>
       )}
     </div>
@@ -207,8 +259,8 @@ const App: React.FC = () => {
   const [flash, setFlash] = useState(false);
   const { videoRef, startCamera, permissionGranted, error, stream } = useWebcam();
   
-  // Face Detection - Only active if mask is enabled and we are in active modes
-  const isDetectionActive = config.maskType === MaskType.HEARTS && (appState === AppState.SETUP || appState === AppState.CAPTURE || appState === AppState.COUNTDOWN);
+  // Face Detection - Active if ANY mask is enabled and we are in active modes
+  const isDetectionActive = config.maskType !== MaskType.NONE && (appState === AppState.SETUP || appState === AppState.CAPTURE || appState === AppState.COUNTDOWN);
   const faceData = useFaceDetection(videoRef, isDetectionActive);
 
   // References for timers to allow cancellation
@@ -407,8 +459,8 @@ const App: React.FC = () => {
           )}
         </main>
 
-        <footer className="absolute bottom-6 text-xs text-gray-400 font-sans">
-           Created by Jake Lupig
+        <footer className="absolute bottom-6 text-xs text-gray-400 font-sans font-bold">
+           CREATED BY JAKE LUPIG
         </footer>
       </div>
     );
@@ -421,9 +473,9 @@ const App: React.FC = () => {
     const textColor = isDarkFrame ? 'text-white' : 'text-booth-dark';
     
     return (
-      <div className="min-h-screen bg-booth-cream flex flex-col md:flex-row">
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-blue-50 flex flex-col md:flex-row">
         {/* Left: Preview */}
-        <div className="flex-1 relative flex flex-col items-center justify-center bg-gray-100 p-8 md:p-12 order-1 md:order-1 min-h-[500px]">
+        <div className="flex-1 relative flex flex-col items-center justify-center p-8 md:p-12 order-1 md:order-1 min-h-[500px]">
           <div 
             className="relative w-full max-w-xl max-h-full shadow-2xl transition-all duration-300 border-[16px] flex flex-col overflow-hidden"
             style={{ 
@@ -632,7 +684,7 @@ const App: React.FC = () => {
     const animClass = config.animationType !== AnimationType.NONE ? `anim-${config.animationType}` : '';
 
     return (
-      <div className="h-screen w-screen bg-white relative flex overflow-hidden">
+      <div className="h-screen w-screen bg-gradient-to-br from-rose-50 via-white to-blue-50 relative flex overflow-hidden">
         {flash && <div className="absolute inset-0 bg-white z-50 animate-fadeOut pointer-events-none" />}
         
         <div className="flex-1 relative flex items-center justify-center p-8 md:p-12">
@@ -710,7 +762,7 @@ const App: React.FC = () => {
     const animClass = config.animationType !== AnimationType.NONE ? `anim-${config.animationType}` : '';
 
     return (
-      <div className="min-h-screen bg-booth-cream flex flex-col items-center justify-center p-6 relative">
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-blue-50 flex flex-col items-center justify-center p-6 relative">
          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
 
          {showDownloadFeedback && (

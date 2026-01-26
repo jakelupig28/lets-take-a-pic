@@ -44,7 +44,50 @@ const drawHeart = (ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   ctx.restore();
 };
 
-const drawHeartsMask = (ctx: CanvasRenderingContext2D, width: number, height: number, faceData?: FaceData) => {
+const drawStar = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, rotation: number, opacity: number = 0.9) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation * Math.PI / 180);
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = color;
+  ctx.shadowColor = 'rgba(253, 224, 71, 0.6)'; // Yellow shadow
+  ctx.shadowBlur = 12;
+
+  const spikes = 5;
+  const outerRadius = size / 2;
+  const innerRadius = size / 4;
+  
+  ctx.beginPath();
+  let rot = Math.PI / 2 * 3;
+  let cx = 0; // relative to translate
+  let cy = 0;
+  let step = Math.PI / spikes;
+
+  ctx.moveTo(cx, cy - outerRadius);
+  for (let i = 0; i < spikes; i++) {
+    let sx = cx + Math.cos(rot) * outerRadius;
+    let sy = cy + Math.sin(rot) * outerRadius;
+    ctx.lineTo(sx, sy);
+    rot += step;
+
+    sx = cx + Math.cos(rot) * innerRadius;
+    sy = cy + Math.sin(rot) * innerRadius;
+    ctx.lineTo(sx, sy);
+    rot += step;
+  }
+  ctx.lineTo(cx, cy - outerRadius);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+const drawMask = (
+    ctx: CanvasRenderingContext2D, 
+    width: number, 
+    height: number, 
+    type: MaskType,
+    faceData?: FaceData
+) => {
   // If face detected, use it. Otherwise default to center (approximate position)
   
   let centerX = width / 2;
@@ -69,7 +112,9 @@ const drawHeartsMask = (ctx: CanvasRenderingContext2D, width: number, height: nu
     centerX = faceData.x * width;
     
     // Y is normal
-    centerY = (faceData.y * height) - (faceData.height * height * 0.55); // Slightly higher than center
+    // App.tsx uses: normalizedY - (visibleH * 0.6)
+    // Here we duplicate that logic, using faceData.height (which is normalized height)
+    centerY = (faceData.y - (faceData.height * 0.6)) * height;
     
     // Scale hearts based on face width relative to frame width
     // Reference face width might be ~0.3 of screen.
@@ -80,28 +125,49 @@ const drawHeartsMask = (ctx: CanvasRenderingContext2D, width: number, height: nu
   const radiusX = (width * 0.20) * baseScale; 
   const radiusY = (height * 0.10) * baseScale;
   
-  // Mixed colors: Light Pink (#F9A8D4) and Dark Pink (#DB2777)
-  const colors = ['#F9A8D4', '#DB2777', '#F472B6', '#BE185D', '#FBCFE8'];
+  if (type === MaskType.HEARTS) {
+    // Mixed colors: Light Pink (#F9A8D4) and Dark Pink (#DB2777)
+    const colors = ['#F9A8D4', '#DB2777', '#F472B6', '#BE185D', '#FBCFE8'];
 
-  const hearts = [
-    { angle: -40, size: 30, rotate: -30, color: colors[0] },
-    { angle: -20, size: 38, rotate: -15, color: colors[1] },
-    { angle: 0, size: 45, rotate: 0, color: colors[2] },
-    { angle: 20, size: 38, rotate: 15, color: colors[3] },
-    { angle: 40, size: 30, rotate: 30, color: colors[4] },
-  ];
+    const items = [
+        { angle: -40, size: 30, rotate: -30, color: colors[0] },
+        { angle: -20, size: 38, rotate: -15, color: colors[1] },
+        { angle: 0, size: 45, rotate: 0, color: colors[2] },
+        { angle: 20, size: 38, rotate: 15, color: colors[3] },
+        { angle: 40, size: 30, rotate: 30, color: colors[4] },
+    ];
 
-  hearts.forEach(heart => {
-     const rad = heart.angle * Math.PI / 180;
-     const x = centerX + (radiusX * Math.sin(rad));
-     const y = centerY - (radiusY * Math.cos(rad));
-     
-     // Scale size relative to canvas width (standard reference 640px)
-     const scaleFactor = (width / 640) * baseScale;
-     
-     // Draw with full opacity for the photo
-     drawHeart(ctx, x, y, heart.size * scaleFactor, heart.color, heart.rotate, 0.95);
-  });
+    items.forEach(item => {
+        const rad = item.angle * Math.PI / 180;
+        const x = centerX + (radiusX * Math.sin(rad));
+        const y = centerY - (radiusY * Math.cos(rad));
+        
+        // Scale size relative to canvas width (standard reference 640px)
+        const scaleFactor = (width / 640) * baseScale;
+        
+        drawHeart(ctx, x, y, item.size * scaleFactor, item.color, item.rotate, 0.95);
+    });
+  } 
+  else if (type === MaskType.STARS) {
+    const colors = ['#FDE047', '#FEF08A', '#FCD34D', '#BAE6FD', '#FDE047']; // Yellows and light blue
+
+    const items = [
+        { angle: -45, size: 35, rotate: -20, color: colors[0] },
+        { angle: -22, size: 28, rotate: -10, color: colors[1] },
+        { angle: 0, size: 42, rotate: 0, color: colors[2] },
+        { angle: 22, size: 28, rotate: 10, color: colors[3] },
+        { angle: 45, size: 35, rotate: 20, color: colors[4] },
+    ];
+
+    items.forEach(item => {
+        const rad = item.angle * Math.PI / 180;
+        const x = centerX + (radiusX * Math.sin(rad));
+        const y = centerY - (radiusY * Math.cos(rad));
+        const scaleFactor = (width / 640) * baseScale;
+
+        drawStar(ctx, x, y, item.size * scaleFactor, item.color, item.rotate, 0.95);
+    });
+  }
 };
 
 /**
@@ -161,7 +227,7 @@ export const captureFrame = (
   ctx.drawImage(video, sX, sY, sW, sH, 0, 0, canvas.width, canvas.height);
   
   // Draw Mask if enabled
-  if (mask === MaskType.HEARTS) {
+  if (mask !== MaskType.NONE) {
     // We need to adjust faceData for the crop if it exists
     
     let adjustedFaceData = undefined;
@@ -190,7 +256,7 @@ export const captureFrame = (
         };
     }
 
-    drawHeartsMask(ctx, canvas.width, canvas.height, adjustedFaceData);
+    drawMask(ctx, canvas.width, canvas.height, mask, adjustedFaceData);
   }
 
   return canvas.toDataURL("image/png");

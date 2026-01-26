@@ -31,6 +31,7 @@ export enum AnimationType {
 export enum MaskType {
   NONE = 'none',
   HEARTS = 'hearts',
+  STARS = 'stars',
 }
 
 export enum GridType {
