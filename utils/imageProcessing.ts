@@ -97,18 +97,6 @@ const drawMask = (
   if (faceData) {
     // FaceData is normalized 0-1.
     // video frame is flipped in context (mirror effect), but the source faceData is from raw video.
-    // Raw Video: X=0 is Left.
-    // Canvas Context: Flipped horizontally by `scale(-1, 1)`. 
-    // This means coordinate 0 is visually on the Right, and width is on the Left.
-    // However, we translate(width, 0) before scaling.
-    // So logic:
-    // Canvas X=0 corresponds to Source X=0 (Visually Right side of screen)
-    // Canvas X=Width corresponds to Source X=Width (Visually Left side of screen)
-    // Actually, captureFrame does: translate(width, 0); scale(-1, 1);
-    // This effectively maps Source Pixels directly to Canvas Pixels, just mirrored rendering.
-    // So if face is at x=100 in source, we draw at x=100 in canvas.
-    // The scale(-1, 1) flips the drawing at that position.
-    
     centerX = faceData.x * width;
     
     // Y is normal
@@ -168,6 +156,57 @@ const drawMask = (
         drawStar(ctx, x, y, item.size * scaleFactor, item.color, item.rotate, 0.95);
     });
   }
+};
+
+/**
+ * Captures a low-resolution frame for GIF generation.
+ */
+export const captureLowResFrame = (
+  video: HTMLVideoElement,
+  filter: FilterType
+): string => {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  // Small size for GIF performance
+  const width = 320;
+  const height = 240;
+  const targetRatio = width / height; // 4:3
+
+  canvas.width = width;
+  canvas.height = height;
+
+  if (filter !== FilterType.NORMAL) {
+    ctx.filter = filter;
+  }
+
+  // Mirror
+  ctx.translate(width, 0);
+  ctx.scale(-1, 1);
+
+  // Calculate Crop to preserve aspect ratio (4:3) and avoid squeezing
+  const videoRatio = video.videoWidth / video.videoHeight;
+  let sW, sH, sX, sY;
+
+  if (videoRatio > targetRatio) {
+    // Video is wider (e.g. 16:9). Crop width.
+    sH = video.videoHeight;
+    sW = sH * targetRatio;
+    sX = (video.videoWidth - sW) / 2;
+    sY = 0;
+  } else {
+    // Video is taller or equal. Crop height.
+    sW = video.videoWidth;
+    sH = sW / targetRatio;
+    sX = 0;
+    sY = (video.videoHeight - sH) / 2;
+  }
+
+  // Draw scaled down with crop
+  ctx.drawImage(video, sX, sY, sW, sH, 0, 0, width, height);
+
+  return canvas.toDataURL("image/jpeg", 0.6); // Compress slightly
 };
 
 /**
@@ -269,17 +308,13 @@ export const generateComposite = async (
   images: string[],
   gridType: GridType,
   frameColor: FrameColor,
+  qrCodeUrl?: string | null, // Added QR code support
   title: string = "let's take a pic"
 ): Promise<string> => {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
 
-  // Base configuration
-  // Increased to 70px (from 60px) to add more space as requested
-  const padding = 70; 
-  const gap = 70; 
-  const bottomLabelHeight = 160; 
   
   // Assuming all captured images are same size. Load first to get dimensions.
   const loadedImages = await Promise.all(
@@ -296,6 +331,15 @@ export const generateComposite = async (
 
   const sourceW = loadedImages[0].width;
   const sourceH = loadedImages[0].height;
+
+  // Dynamic Spacing Logic
+  // For high-res (e.g. 1000px wide), we want ~70px padding. Ratio: 0.07
+  // For low-res (e.g. 320px wide), we want ~20px padding. Ratio: ~0.06
+  const scaleFactor = sourceW < 500 ? 0.5 : 1.0;
+  
+  const padding = Math.round(70 * scaleFactor); 
+  const gap = Math.round(70 * scaleFactor); 
+  const bottomLabelHeight = Math.round(160 * scaleFactor); 
 
   // Determine Cell Size and Cropping based on Grid Type
   let cellW = sourceW;
@@ -387,17 +431,19 @@ export const generateComposite = async (
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
-  // Calculate center of the footer text
-  const footerCenterY = canvas.height - 90;
+  // Calculate center of the footer text area
+  const footerCenterY = canvas.height - (90 * scaleFactor);
 
   // Title
-  ctx.font = 'italic 700 48px "Playfair Display", serif';
+  const titleSize = Math.round(48 * scaleFactor);
+  ctx.font = `italic 700 ${titleSize}px "Playfair Display", serif`;
   // Date
-  const dateFont = '500 24px "DM Sans", sans-serif';
+  const dateSize = Math.round(24 * scaleFactor);
+  const dateFont = `500 ${dateSize}px "DM Sans", sans-serif`;
 
   // Position title and date relative to the visual center
-  const titleY = footerCenterY - 24;
-  const dateY = footerCenterY + 28;
+  const titleY = footerCenterY - (24 * scaleFactor);
+  const dateY = footerCenterY + (28 * scaleFactor);
 
   ctx.fillText(title, canvas.width / 2, titleY);
 
@@ -405,6 +451,24 @@ export const generateComposite = async (
   ctx.globalAlpha = 0.7;
   const dateStr = new Date().toLocaleDateString();
   ctx.fillText(dateStr, canvas.width / 2, dateY);
+
+  // Draw QR Code if provided
+  if (qrCodeUrl) {
+    const qrImg = await new Promise<HTMLImageElement>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.src = qrCodeUrl;
+    });
+    
+    // QR Code Placement: Bottom Right, with some padding
+    const qrSize = Math.round(100 * scaleFactor);
+    const qrX = canvas.width - padding - qrSize;
+    const qrY = canvas.height - (bottomLabelHeight / 2) - (qrSize / 2); // Vertically centered in footer
+    
+    // Reset alpha for QR
+    ctx.globalAlpha = 1.0;
+    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+  }
 
   return canvas.toDataURL("image/png");
 };
