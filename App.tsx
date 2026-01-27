@@ -459,7 +459,7 @@ const App: React.FC = () => {
           )}
         </main>
 
-        <footer className="absolute bottom-6 text-xs text-gray-400 font-sans font-bold">
+        <footer className="absolute bottom-6 text-[9px] font-bold tracking-[0.2em] text-slate-400 uppercase opacity-60">
            CREATED BY JAKE LUPIG
         </footer>
       </div>
