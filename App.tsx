@@ -527,11 +527,15 @@ const App: React.FC = () => {
 
         {/* Right: Controls */}
         <div className="w-full md:w-96 bg-white border-l border-gray-100 p-8 flex flex-col gap-8 order-2 md:order-2 overflow-y-auto z-10 shadow-lg">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif text-3xl italic">Settings</h2>
-            <button onClick={() => setAppState(AppState.IDLE)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-              <Icons.Close className="w-6 h-6 text-gray-400" />
-            </button>
+          <div className="flex items-center gap-3">
+             <button 
+               onClick={() => setAppState(AppState.IDLE)} 
+               className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors group"
+               aria-label="Back"
+             >
+               <Icons.ArrowLeft className="w-6 h-6 text-gray-400 group-hover:text-booth-dark" />
+             </button>
+             <h2 className="font-serif text-3xl italic">Settings</h2>
           </div>
 
           <div className="space-y-3">
