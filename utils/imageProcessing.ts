@@ -158,67 +158,32 @@ const drawMask = (
   }
 };
 
-/**
- * Captures a low-resolution frame for GIF generation.
- */
-export const captureLowResFrame = (
-  video: HTMLVideoElement,
-  filter: FilterType
-): string => {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return "";
-
-  // Small size for GIF performance
-  const width = 320;
-  const height = 240;
-  const targetRatio = width / height; // 4:3
-
-  canvas.width = width;
-  canvas.height = height;
-
-  if (filter !== FilterType.NORMAL) {
-    ctx.filter = filter;
-  }
-
-  // Mirror
-  ctx.translate(width, 0);
-  ctx.scale(-1, 1);
-
-  // Calculate Crop to preserve aspect ratio (4:3) and avoid squeezing
-  const videoRatio = video.videoWidth / video.videoHeight;
-  let sW, sH, sX, sY;
-
-  if (videoRatio > targetRatio) {
-    // Video is wider (e.g. 16:9). Crop width.
-    sH = video.videoHeight;
-    sW = sH * targetRatio;
-    sX = (video.videoWidth - sW) / 2;
-    sY = 0;
-  } else {
-    // Video is taller or equal. Crop height.
-    sW = video.videoWidth;
-    sH = sW / targetRatio;
-    sX = 0;
-    sY = (video.videoHeight - sH) / 2;
-  }
-
-  // Draw scaled down with crop
-  ctx.drawImage(video, sX, sY, sW, sH, 0, 0, width, height);
-
-  return canvas.toDataURL("image/jpeg", 0.6); // Compress slightly
-};
+export interface CaptureOptions {
+  filter: FilterType;
+  mask?: MaskType;
+  faceData?: FaceData | null;
+  targetWidth?: number;
+  mimeType?: string;
+  quality?: number;
+}
 
 /**
- * Captures the current frame from the video element applying the selected filter.
+ * Captures the current frame from the video element applying the selected filter and mask.
  * Clips the image to a 4:3 aspect ratio.
  */
 export const captureFrame = (
   video: HTMLVideoElement,
-  filter: FilterType,
-  mask: MaskType = MaskType.NONE,
-  faceData?: FaceData | null
+  options: CaptureOptions
 ): string => {
+  const { 
+    filter, 
+    mask = MaskType.NONE, 
+    faceData, 
+    targetWidth, 
+    mimeType = "image/png", 
+    quality = 0.92 
+  } = options;
+
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
@@ -227,9 +192,9 @@ export const captureFrame = (
   const targetRatio = 4/3;
   const videoRatio = video.videoWidth / video.videoHeight;
   
+  // Calculate source crop dimensions
   let sW, sH, sX, sY;
 
-  // Calculate cropping to center the image within the 4:3 container
   if (videoRatio > targetRatio) {
     // Video is wider (e.g. 16:9). Crop width.
     sH = video.videoHeight;
@@ -244,14 +209,18 @@ export const captureFrame = (
     sY = (video.videoHeight - sH) / 2;
   }
 
-  // Ensure integer dimensions
-  sW = Math.floor(sW);
-  sH = Math.floor(sH);
-  sX = Math.floor(sX);
-  sY = Math.floor(sY);
+  // Determine output dimensions
+  let outputWidth, outputHeight;
+  if (targetWidth) {
+    outputWidth = targetWidth;
+    outputHeight = targetWidth / targetRatio;
+  } else {
+    outputWidth = sW;
+    outputHeight = sH;
+  }
 
-  canvas.width = sW;
-  canvas.height = sH;
+  canvas.width = Math.floor(outputWidth);
+  canvas.height = Math.floor(outputHeight);
 
   // Apply filter contextually if supported
   if (filter !== FilterType.NORMAL) {
@@ -284,13 +253,16 @@ export const captureFrame = (
         const fx_crop = fx_px - sX;
         const fy_crop = fy_px - sY;
         
-        // Normalize back to Canvas size
+        // Normalize back to Output Canvas size
+        // Note: sW/sH is the crop size in source pixels.
+        // We are drawing into `canvas.width` which is the output size.
+        // The drawing logic uses normalized coordinates (0-1) so we just need to normalize relative to the crop area.
         adjustedFaceData = {
             x: fx_crop / sW,
             y: fy_crop / sH,
             width: fw_px / sW,
             height: fh_px / sH,
-            videoWidth: sW, // adjusted video width for the context of mask drawing
+            videoWidth: sW, 
             videoHeight: sH
         };
     }
@@ -298,8 +270,10 @@ export const captureFrame = (
     drawMask(ctx, canvas.width, canvas.height, mask, adjustedFaceData);
   }
 
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL(mimeType, quality);
 };
+
+// Removed captureLowResFrame as it is now superseded by captureFrame with options
 
 /**
  * Generates the final composite image (strip or grid).

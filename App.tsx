@@ -4,11 +4,10 @@ import { useSound } from './hooks/useSound';
 import { useFaceDetection } from './hooks/useFaceDetection';
 import { AppState, FilterType, FrameColor, GridType, PhotoConfig, AnimationType, MaskType, FaceData } from './types';
 import { DEFAULT_CONFIG, GRID_CONFIGS, FILTERS, FRAMES, TIMERS, ANIMATIONS, MASKS } from './constants';
-import { captureFrame, captureLowResFrame, generateComposite } from './utils/imageProcessing';
+import { captureFrame, generateComposite } from './utils/imageProcessing';
 import { Icons } from './components/Icon';
 
 // Declare globals for CDN libraries
-declare const gifshot: any;
 declare const QRCode: any;
 
 // --- Shared Logic for Overlays ---
@@ -258,8 +257,9 @@ const App: React.FC = () => {
   const [compositeUrl, setCompositeUrl] = useState<string | null>(null);
   const [showDownloadFeedback, setShowDownloadFeedback] = useState(false);
   
-  // GIF and Recording State
-  const [gifUrl, setGifUrl] = useState<string | null>(null);
+  // Video and Recording State
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoMimeType, setVideoMimeType] = useState<string>('video/mp4');
   const recordedFramesRef = useRef<string[][]>([]); // Array of arrays (clips per photo)
   const currentClipRef = useRef<string[]>([]); // Current photo's frames
   const recordingIntervalRef = useRef<number | null>(null);
@@ -310,7 +310,7 @@ const App: React.FC = () => {
       setAppState(AppState.SETUP);
       setPhotos([]);
       setCompositeUrl(null);
-      setGifUrl(null);
+      setVideoUrl(null);
       recordedFramesRef.current = [];
       currentClipRef.current = [];
     }
@@ -347,8 +347,17 @@ const App: React.FC = () => {
     recordingIntervalRef.current = window.setInterval(() => {
       // Check if video is ready (readyState >= 2 means HAVE_CURRENT_DATA)
       if (videoRef.current && videoRef.current.readyState >= 2 && videoRef.current.videoWidth > 0) {
-        // Capture small frame for GIF
-        const frame = captureLowResFrame(videoRef.current, config.filterType);
+        // Capture frame for Video
+        // We use a moderate width (480px) to balance quality and performance for video frames
+        // We ensure mask and face data are passed so the video matches the photo
+        const frame = captureFrame(videoRef.current, {
+           filter: config.filterType,
+           mask: config.maskType,
+           faceData: faceDataRef.current, // Use ref to get latest face data inside interval
+           targetWidth: 480, // Good enough for video composite
+           mimeType: "image/jpeg",
+           quality: 0.85
+        });
         currentClipRef.current.push(frame);
         
         // Keep only last ~30 frames (3 seconds @ 10fps) to match the "3 seconds each" request
@@ -374,70 +383,99 @@ const App: React.FC = () => {
         return prev - 1;
       });
     }, 1000);
-  }, [config.timerDuration, playCountdown, config.filterType, videoRef]);
+  }, [config.timerDuration, config.filterType, config.maskType, playCountdown, videoRef]);
 
-  // Generate GIF from recorded frames
-  const generateGif = useCallback(async (qrCodeDataUrl: string | null) => {
+  // Generate MP4/Video from recorded frames using MediaRecorder
+  const generateVideo = useCallback(async (qrCodeDataUrl: string | null) => {
     const clips = recordedFramesRef.current;
-    if (clips.length === 0 || typeof gifshot === 'undefined') return;
+    if (clips.length === 0) return;
 
     // Find the minimum number of frames across all clips to ensure synchronization
-    // If a clip is missing (shouldn't happen), skip
     const minFrames = Math.min(...clips.map(c => c.length));
     if (minFrames <= 0) return;
 
-    // Construct the frames for the final GIF
-    // Each frame 'i' in the final GIF corresponds to the composite of the i-th frame of each clip
-    const gifFrames: string[] = [];
+    // We need to construct the composite frames first
+    const videoFrames: HTMLImageElement[] = [];
 
     // Pre-generate composite frames
-    // This is async, so we gather promises
-    // To avoid jamming the browser with too many concurrent canvas ops, we can chunk or just run safely.
-    // 30 frames is reasonable.
-    
-    // We also need to determine the output dimensions for gifshot to avoid stretching
-    // We'll generate the first frame to inspect it, or calculate from knowns.
-    // Let's rely on generateComposite logic.
-    // Note: generateComposite creates an image of size roughly 460px wide (based on 320px input + 140px padding).
-    
     for (let i = 0; i < minFrames; i++) {
-        // Prepare the array of images for this time step
-        // Frame 0 of clip 0, Frame 0 of clip 1, etc.
         const frameImages = clips.map(clip => clip[i]);
-
-        const composite = await generateComposite(
+        const compositeDataUrl = await generateComposite(
             frameImages, 
             config.gridType, 
             config.frameColor, 
             qrCodeDataUrl
         );
-        gifFrames.push(composite);
+        
+        // Load into image element to draw to canvas later
+        await new Promise<void>((resolve) => {
+           const img = new Image();
+           img.onload = () => {
+             videoFrames.push(img);
+             resolve();
+           };
+           img.src = compositeDataUrl;
+        });
     }
 
-    if (gifFrames.length === 0) return;
+    if (videoFrames.length === 0) return;
 
-    // Load first frame to get dimensions for gifshot
-    const dimProbe = new Image();
-    dimProbe.onload = () => {
-        const w = dimProbe.width;
-        const h = dimProbe.height;
+    // Determine dimensions from first frame
+    const width = videoFrames[0].width;
+    const height = videoFrames[0].height;
 
-        // gifshot options
-        gifshot.createGIF({
-          images: gifFrames,
-          interval: 0.1, // 10fps
-          gifWidth: w, 
-          gifHeight: h,
-          numWorkers: 2,
-          sampleInterval: 20, // Optimization: lower quality for speed if needed
-        }, (obj: any) => {
-          if (!obj.error) {
-            setGifUrl(obj.image);
-          }
-        });
+    // Create a hidden canvas for recording
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Setup MediaRecorder
+    // Prefer MP4, fallback to WebM
+    const mimeTypes = [
+      'video/mp4', 
+      'video/webm;codecs=h264', 
+      'video/webm;codecs=vp9', 
+      'video/webm'
+    ];
+    
+    let selectedMimeType = 'video/webm';
+    for (const type of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        selectedMimeType = type;
+        break;
+      }
+    }
+    setVideoMimeType(selectedMimeType);
+
+    const stream = canvas.captureStream(30); // 30 FPS stream from canvas
+    const recorder = new MediaRecorder(stream, { mimeType: selectedMimeType, videoBitsPerSecond: 2500000 });
+    const chunks: BlobPart[] = [];
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
     };
-    dimProbe.src = gifFrames[0];
 
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: selectedMimeType });
+      const url = URL.createObjectURL(blob);
+      setVideoUrl(url);
+    };
+
+    recorder.start();
+
+    // "Play" the frames onto the canvas
+    // We want a stop-motion feel, so maybe 6-10 FPS equivalent
+    const frameDuration = 150; // ms per frame
+
+    for (const img of videoFrames) {
+      ctx.drawImage(img, 0, 0);
+      // Wait for duration to record this frame
+      await new Promise(resolve => setTimeout(resolve, frameDuration));
+    }
+
+    recorder.stop();
   }, [config]);
 
   // Process Result needs to be stable or dependent on config
@@ -446,11 +484,8 @@ const App: React.FC = () => {
     
     try {
       // 1. Generate QR Code Data URL
-      // Since we cannot host the GIF dynamically without backend, we point to the App URL or a placeholder.
-      // Ideally this would be the URL to the hosted GIF.
       let qrCodeDataUrl = null;
       if (typeof QRCode !== 'undefined') {
-         // Point to the current window location as a placeholder interaction
          qrCodeDataUrl = await QRCode.toDataURL(window.location.href, { margin: 1, width: 100, color: { dark: config.frameColor === FrameColor.BLACK ? '#FFFFFF' : '#000000', light: '#00000000' } });
       }
 
@@ -458,15 +493,15 @@ const App: React.FC = () => {
       const result = await generateComposite(finalPhotos, config.gridType, config.frameColor, qrCodeDataUrl);
       setCompositeUrl(result);
       
-      // 3. Generate GIF (Moving Strip)
-      generateGif(qrCodeDataUrl);
+      // 3. Generate Video (Moving Strip)
+      generateVideo(qrCodeDataUrl);
 
       setAppState(AppState.RESULT);
       playSuccess(); 
     } catch (err) {
       console.error("Processing failed", err);
     }
-  }, [config, playSuccess, generateGif]);
+  }, [config, playSuccess, generateVideo]);
 
   const takePhoto = useCallback(() => {
     if (videoRef.current) {
@@ -485,8 +520,13 @@ const App: React.FC = () => {
       setTimeout(() => setFlash(false), 200);
 
       try {
-        // Pass the mask type AND detected face data to the capture function
-        const photoData = captureFrame(videoRef.current, config.filterType, config.maskType, faceDataRef.current);
+        // Capture High-Res Photo
+        // No targetWidth means use full video resolution (e.g. 1080p cropped to 4:3)
+        const photoData = captureFrame(videoRef.current, {
+            filter: config.filterType,
+            mask: config.maskType,
+            faceData: faceDataRef.current
+        });
         
         setPhotos(prev => {
           const newPhotos = [...prev, photoData];
@@ -517,7 +557,7 @@ const App: React.FC = () => {
   const handleRetake = () => {
     setPhotos([]);
     setCompositeUrl(null);
-    setGifUrl(null);
+    setVideoUrl(null);
     recordedFramesRef.current = [];
     setAppState(AppState.SETUP);
   };
@@ -536,11 +576,13 @@ const App: React.FC = () => {
     }
   };
 
-  const downloadGif = () => {
-    if (gifUrl) {
+  const downloadVideo = () => {
+    if (videoUrl) {
       const link = document.createElement('a');
-      link.href = gifUrl;
-      link.download = `lets-take-a-pic-moment-${Date.now()}.gif`;
+      link.href = videoUrl;
+      // Determine extension based on mime type
+      const ext = videoMimeType.includes('mp4') ? 'mp4' : 'webm';
+      link.download = `lets-take-a-pic-moment-${Date.now()}.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -565,11 +607,11 @@ const App: React.FC = () => {
         <div className="absolute -bottom-32 left-[15%] w-[600px] h-[600px] bg-pink-200/50 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob animation-delay-4000"></div>
 
         <main className="z-10 text-center space-y-12 w-full max-w-4xl">
-          <div className="space-y-4">
+          <div className="space-y-6">
             <h1 className="font-serif italic text-5xl md:text-8xl tracking-tight text-booth-dark whitespace-nowrap">
               let's take a pic
             </h1>
-            <p className="text-gray-500 font-sans text-sm md:text-base tracking-wide max-w-xl mx-auto">
+            <p className="text-gray-500 font-serif italic text-lg md:text-2xl tracking-wide max-w-2xl mx-auto leading-relaxed opacity-80">
               What we share now will soon turn into a memory, so let's put it in a picture and carry the story of us.
             </p>
           </div>
@@ -958,11 +1000,11 @@ const App: React.FC = () => {
                  </button>
 
                  <button 
-                   onClick={downloadGif}
-                   disabled={!gifUrl}
+                   onClick={downloadVideo}
+                   disabled={!videoUrl}
                    className="w-full py-5 bg-black text-white rounded-2xl font-bold text-xl flex items-center justify-center hover:scale-105 transition-transform shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                  >
-                   <Icons.Image className="mr-3 w-6 h-6" /> Download Moving GIF
+                   <Icons.Image className="mr-3 w-6 h-6" /> Download Video
                  </button>
                  
                  <button 
