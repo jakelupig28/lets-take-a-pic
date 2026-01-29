@@ -256,6 +256,7 @@ const App: React.FC = () => {
   const [photos, setPhotos] = useState<string[]>([]);
   const [compositeUrl, setCompositeUrl] = useState<string | null>(null);
   const [showDownloadFeedback, setShowDownloadFeedback] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
   
   // Video and Recording State
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -339,8 +340,12 @@ const App: React.FC = () => {
     playCountdown(); 
     setAppState(AppState.COUNTDOWN);
     
-    // Start Recording frames for GIF (Record last 3 seconds roughly)
+    // Start Recording frames
     // We capture at 10fps (100ms)
+    // The buffer size must match the timer duration to ensure the video length equals the timer length.
+    const captureInterval = 100; // ms
+    const maxFrames = Math.ceil((config.timerDuration * 1000) / captureInterval);
+
     currentClipRef.current = [];
     if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
     
@@ -360,12 +365,12 @@ const App: React.FC = () => {
         });
         currentClipRef.current.push(frame);
         
-        // Keep only last ~30 frames (3 seconds @ 10fps) to match the "3 seconds each" request
-        if (currentClipRef.current.length > 30) {
+        // Keep only maxFrames (matches timer duration)
+        if (currentClipRef.current.length > maxFrames) {
           currentClipRef.current.shift();
         }
       }
-    }, 100);
+    }, captureInterval);
 
     // Clear any existing timer
     if (timerRef.current) clearInterval(timerRef.current);
@@ -391,6 +396,7 @@ const App: React.FC = () => {
     if (clips.length === 0) return;
 
     // Find the minimum number of frames across all clips to ensure synchronization
+    // If one clip is significantly shorter (which shouldn't happen unless error), we use the min to sync
     const minFrames = Math.min(...clips.map(c => c.length));
     if (minFrames <= 0) return;
 
@@ -421,8 +427,12 @@ const App: React.FC = () => {
     if (videoFrames.length === 0) return;
 
     // Determine dimensions from first frame
-    const width = videoFrames[0].width;
-    const height = videoFrames[0].height;
+    const rawWidth = videoFrames[0].width;
+    const rawHeight = videoFrames[0].height;
+
+    // Ensure even dimensions for compatibility (H.264/VP9 often fail with odd dimensions)
+    const width = rawWidth % 2 === 0 ? rawWidth : rawWidth + 1;
+    const height = rawHeight % 2 === 0 ? rawHeight : rawHeight + 1;
 
     // Create a hidden canvas for recording
     const canvas = document.createElement('canvas');
@@ -430,6 +440,9 @@ const App: React.FC = () => {
     canvas.height = height;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    
+    // FIX 1: Draw first frame immediately to prevent blank start
+    ctx.drawImage(videoFrames[0], 0, 0, width, height);
 
     // Setup MediaRecorder
     // Prefer MP4, fallback to WebM
@@ -449,8 +462,9 @@ const App: React.FC = () => {
     }
     setVideoMimeType(selectedMimeType);
 
-    const stream = canvas.captureStream(30); // 30 FPS stream from canvas
-    const recorder = new MediaRecorder(stream, { mimeType: selectedMimeType, videoBitsPerSecond: 2500000 });
+    // Use 30 FPS stream for recorder, but we will feed it at our own pace
+    const stream = canvas.captureStream(30); 
+    const recorder = new MediaRecorder(stream, { mimeType: selectedMimeType, videoBitsPerSecond: 3000000 });
     const chunks: BlobPart[] = [];
 
     recorder.ondataavailable = (e) => {
@@ -461,19 +475,39 @@ const App: React.FC = () => {
       const blob = new Blob(chunks, { type: selectedMimeType });
       const url = URL.createObjectURL(blob);
       setVideoUrl(url);
+
+      // Cleanup stream tracks
+      stream.getTracks().forEach(track => track.stop());
     };
 
     recorder.start();
 
-    // "Play" the frames onto the canvas
-    // We want a stop-motion feel, so maybe 6-10 FPS equivalent
-    const frameDuration = 150; // ms per frame
+    // Small delay to ensure recorder is ready
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-    for (const img of videoFrames) {
-      ctx.drawImage(img, 0, 0);
-      // Wait for duration to record this frame
-      await new Promise(resolve => setTimeout(resolve, frameDuration));
+    // FIX 2: Dynamic Interval to match requested timer duration
+    // Adjust playback speed so the total video length matches the timer duration (e.g. 3s),
+    // even if we dropped frames during capture.
+    const targetDurationMs = config.timerDuration * 1000;
+    const frameInterval = targetDurationMs / videoFrames.length;
+
+    const startTime = performance.now();
+
+    for (let i = 0; i < videoFrames.length; i++) {
+      ctx.drawImage(videoFrames[i], 0, 0, width, height);
+      
+      // Calculate target time for the end of this frame
+      const targetTime = startTime + ((i + 1) * frameInterval);
+      const now = performance.now();
+      const timeLeft = targetTime - now;
+      
+      if (timeLeft > 0) {
+        await new Promise(resolve => setTimeout(resolve, timeLeft));
+      }
     }
+
+    // Wait a bit after last frame to ensure encoding catches up before stopping
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     recorder.stop();
   }, [config]);
@@ -505,29 +539,35 @@ const App: React.FC = () => {
 
   const takePhoto = useCallback(() => {
     if (videoRef.current) {
-      // Stop recording for this shot
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-        // Save current clip
-        if (currentClipRef.current.length > 0) {
-          recordedFramesRef.current.push([...currentClipRef.current]);
-        }
-      }
-
       playShutter(); 
       setFlash(true);
       setTimeout(() => setFlash(false), 200);
 
       try {
-        // Capture High-Res Photo
-        // No targetWidth means use full video resolution (e.g. 1080p cropped to 4:3)
+        // Capture High-Res Photo immediately to sync shutter sound and visual
+        // No targetWidth means use full video resolution
         const photoData = captureFrame(videoRef.current, {
             filter: config.filterType,
             mask: config.maskType,
             faceData: faceDataRef.current
         });
         
+        // Stop recording for this shot
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+          
+          // Append the actual photo frame to the end of the video clip
+          // We add it multiple times to create a "freeze frame" effect at the end
+          if (currentClipRef.current.length > 0) {
+             const freezeFrames = 5; // Adds ~0.5s freeze at 10fps playback equivalent
+             for(let i=0; i<freezeFrames; i++) {
+                 currentClipRef.current.push(photoData);
+             }
+             recordedFramesRef.current.push([...currentClipRef.current]);
+          }
+        }
+
         setPhotos(prev => {
           const newPhotos = [...prev, photoData];
           const targetCount = GRID_CONFIGS[config.gridType].count;
@@ -571,6 +611,7 @@ const App: React.FC = () => {
       link.click();
       document.body.removeChild(link);
 
+      setFeedbackMessage("Your photo strip is downloading successfully.");
       setShowDownloadFeedback(true);
       setTimeout(() => setShowDownloadFeedback(false), 4000);
     }
@@ -586,6 +627,10 @@ const App: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      setFeedbackMessage("Your video moment is downloading successfully.");
+      setShowDownloadFeedback(true);
+      setTimeout(() => setShowDownloadFeedback(false), 4000);
     }
   };
 
@@ -607,11 +652,11 @@ const App: React.FC = () => {
         <div className="absolute -bottom-32 left-[15%] w-[600px] h-[600px] bg-pink-200/50 rounded-full mix-blend-multiply filter blur-[96px] opacity-60 animate-blob animation-delay-4000"></div>
 
         <main className="z-10 text-center space-y-12 w-full max-w-4xl">
-          <div className="space-y-6">
-            <h1 className="font-serif italic text-5xl md:text-8xl tracking-tight text-booth-dark whitespace-nowrap">
+          <div className="space-y-2">
+            <h1 className="font-serif italic text-[3rem] md:text-[5rem] tracking-tight text-booth-dark whitespace-nowrap">
               let's take a pic
             </h1>
-            <p className="text-gray-500 font-serif italic text-lg md:text-2xl tracking-wide max-w-2xl mx-auto leading-relaxed opacity-80">
+            <p className="text-gray-500 font-serif italic text-[1rem] md:text-[1.3rem] tracking-wide max-w-2xl mx-auto leading-relaxed opacity-80">
               What we share now will soon turn into a memory, so let's put it in a picture and carry the story of us.
             </p>
           </div>
@@ -955,7 +1000,7 @@ const App: React.FC = () => {
                 <div className="bg-green-500 rounded-full p-1">
                   <Icons.Check className="w-4 h-4 text-white" />
                 </div>
-                <span className="font-sans font-medium">Your photo strip is downloading successfully.</span>
+                <span className="font-sans font-medium">{feedbackMessage}</span>
               </div>
             </div>
          )}
