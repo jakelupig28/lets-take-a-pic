@@ -764,7 +764,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-             <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
+             <label className="flex items-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400/80 mb-2">
                <Icons.Grid className="w-4 h-4 mr-2"/> Layout
              </label>
              <div className="grid grid-cols-2 gap-3">
@@ -785,7 +785,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
+            <label className="flex items-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400/80 mb-2">
               <Icons.Sparkles className="w-4 h-4 mr-2"/> Mask
             </label>
             <div className="flex flex-wrap gap-2">
@@ -809,7 +809,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
+            <label className="flex items-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400/80 mb-2">
               <Icons.Palette className="w-4 h-4 mr-2"/> Filter
             </label>
             <div className="flex flex-wrap gap-2">
@@ -833,7 +833,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
+            <label className="flex items-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400/80 mb-2">
               <Icons.Image className="w-4 h-4 mr-2"/> Effects
             </label>
             <div className="flex flex-wrap gap-2">
@@ -854,7 +854,7 @@ const App: React.FC = () => {
           </div>
 
            <div className="space-y-3">
-            <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
+            <label className="flex items-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400/80 mb-2">
               <Icons.Palette className="w-4 h-4 mr-2"/> Frame
             </label>
             <div className="flex gap-4">
@@ -873,7 +873,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <label className="flex items-center text-sm font-bold uppercase tracking-wider text-gray-400">
+            <label className="flex items-center text-xs font-semibold uppercase tracking-[0.2em] text-gray-400/80 mb-2">
               <Icons.Timer className="w-4 h-4 mr-2"/> Timer
             </label>
             <div className="flex bg-gray-100 p-1 rounded-xl">

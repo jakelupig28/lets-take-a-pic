@@ -413,7 +413,7 @@ export const generateComposite = async (
   ctx.font = `italic 700 ${titleSize}px "Playfair Display", serif`;
   // Date
   const dateSize = Math.round(24 * scaleFactor);
-  const dateFont = `500 ${dateSize}px "DM Sans", sans-serif`;
+  const dateFont = `500 ${dateSize}px "Outfit", sans-serif`;
 
   // Position title and date relative to the visual center
   const titleY = footerCenterY - (24 * scaleFactor);

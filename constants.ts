@@ -1,7 +1,7 @@
 import { AnimationType, FilterType, FrameColor, GridType, MaskType } from "./types";
 
 export const DEFAULT_CONFIG = {
-  timerDuration: 3,
+  timerDuration: 5,
   gridType: GridType.GRID_2X2, // Default to Grid 2x2
   filterType: FilterType.NORMAL,
   frameColor: FrameColor.WHITE,
@@ -54,4 +54,4 @@ export const FRAMES = [
   { label: 'Lilac', value: FrameColor.LILAC, text: '#000000' },
 ];
 
-export const TIMERS = [3, 5, 10];
+export const TIMERS = [5, 10, 15];
