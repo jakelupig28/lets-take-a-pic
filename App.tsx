@@ -932,8 +932,8 @@ const App: React.FC = () => {
                   className="w-full h-full"
               />
                 
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-                  <div className="text-[10rem] md:text-[14rem] font-bold text-white drop-shadow-2xl animate-pulse font-serif italic leading-none">
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+                  <div className="text-[10rem] md:text-[14rem] font-bold text-white drop-shadow-2xl animate-pulse font-sans leading-none select-none">
                     {countdown > 0 ? countdown : ''}
                   </div>
                 </div>
